@@ -55,9 +55,11 @@ class ThreeLayerConvNet(object):
         b1 = np.zeros((num_filters))
 
         if self.use_batchnorm:
-            self.params['gamma'] = np.ones(C)
-            self.params['beta'] = np.zeros(C)
-            self.bn_param = {'mode': 'train'}
+            self.params['gamma1'] = np.ones(num_filters)
+            self.params['beta1'] = np.zeros(num_filters)
+            self.params['gamma2'] = np.ones(hidden_dim)
+            self.params['beta2'] = np.zeros(hidden_dim)
+            self.bn_params = [{'mode': 'train'},{'mode': 'train'}]
 
         
         pool_height = 2
@@ -110,13 +112,17 @@ class ThreeLayerConvNet(object):
         ############################################################################
         mode = 'test' if y is None else 'train'
         if self.use_batchnorm:
-            self.bn_param['mode'] = mode
-            gamma = self.params['gamma']
-            beta = self.params['beta']
-            out_1, cache_1 = conv_bn_relu_pool_forward(X, W1, b1, gamma, beta, conv_param, self.bn_param, pool_param)
+            for bn_param in self.bn_params:
+                bn_param['mode'] = mode
+            gamma1 = self.params['gamma1']
+            beta1 = self.params['beta1']
+            gamma2 = self.params['gamma2']
+            beta2 = self.params['beta2']
+            out_1, cache_1 = conv_bn_relu_pool_forward(X, W1, b1, gamma1, beta1, conv_param, self.bn_params[0], pool_param)
+            out_2, cache_2 = affine_bn_relu_forward(out_1, W2, b2, gamma2, beta2, self.bn_params[1])
         else:
             out_1, cache_1 = conv_relu_pool_forward(X, W1, b1, conv_param, pool_param)
-        out_2, cache_2 = affine_relu_forward(out_1, W2, b2)
+            out_2, cache_2 = affine_relu_forward(out_1, W2, b2)
         out_3, cache_3 = affine_forward(out_2, W3, b3)
         scores = out_3
         ############################################################################
@@ -138,12 +144,15 @@ class ThreeLayerConvNet(object):
         loss += 0.5 * self.reg * (np.sum(W1 * W1) + np.sum(W2 * W2) + np.sum(W3 * W3))
 
         dout_3, dW3, db3 = affine_backward(dout_4, cache_3)
-        dout_2, dW2, db2 = affine_relu_backward(dout_3, cache_2)
         if self.use_batchnorm:
-            dout_1, dW1, db1, dgamma, dbeta = conv_bn_relu_pool_backward(dout_2, cache_1)
-            grads['gamma'] = dgamma
-            grads['beta'] = dbeta
+            dout_2, dW2, db2, dgamma2, dbeta2 = affine_bn_relu_backward(dout_3, cache_2)
+            dout_1, dW1, db1, dgamma1, dbeta1 = conv_bn_relu_pool_backward(dout_2, cache_1)
+            grads['gamma2'] = dgamma2
+            grads['beta2'] = dbeta2
+            grads['gamma1'] = dgamma1
+            grads['beta1'] = dbeta1
         else:
+            dout_2, dW2, db2 = affine_relu_backward(dout_3, cache_2)
             dout_1, dW1, db1 = conv_relu_pool_backward(dout_2, cache_1)
 
         dW3 += self.reg * W3
